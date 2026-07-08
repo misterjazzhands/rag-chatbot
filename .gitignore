@@ -1,0 +1,33 @@
+# Python virtual environment
+venv/
+.venv/
+ENV/
+env/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Database/Vector store persistence
+chroma_db/
+uploads/
+
+# Python caching
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Frontend build outputs (if any built at root)
+.next/
+node_modules/
+dist/
+build/
+out/

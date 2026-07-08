@@ -1,0 +1,214 @@
+@import "tailwindcss";
+
+:root {
+  /* Apple Color System */
+  --color-primary: #0066cc;
+  --color-primary-focus: #0071e3;
+  --color-primary-on-dark: #2997ff;
+  --color-ink: #1d1d1f;
+  --color-ink-muted-80: #333333;
+  --color-ink-muted-48: #7a7a7a;
+  --color-divider-soft: #e5e5ea;
+  --color-hairline: #c6c6c8;
+  --color-canvas: #ffffff;
+  --color-canvas-parchment: #f5f5f7;
+  --color-surface-pearl: #fafafc;
+  --color-surface-tile-1: #272729;
+  --color-surface-black: #000000;
+  --color-surface-chip-translucent: rgba(210, 210, 215, 0.64);
+  --color-on-primary: #ffffff;
+  --color-on-dark: #ffffff;
+
+  --background: var(--color-canvas);
+  --foreground: var(--color-ink);
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Typography Scale */
+.hero-display {
+  font-size: 56px;
+  font-weight: 600;
+  line-height: 1.07;
+  letter-spacing: -0.28px;
+}
+
+.display-lg {
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.body-strong {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.24;
+  letter-spacing: -0.374px;
+}
+
+.body-text {
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+}
+
+.caption-text {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.43;
+  letter-spacing: -0.224px;
+}
+
+.button-utility {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.29;
+  letter-spacing: -0.224px;
+}
+
+/* Components */
+.apple-button-primary {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+  border-radius: 9999px;
+  padding: 11px 22px;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+  transition: transform 0.15s ease-out, outline 0.15s ease-out;
+}
+.apple-button-primary:active {
+  transform: scale(0.95);
+}
+.apple-button-primary:focus-visible {
+  outline: 2px solid var(--color-primary-focus);
+  outline-offset: 2px;
+}
+
+.apple-button-dark-utility {
+  background-color: var(--color-ink);
+  color: var(--color-on-dark);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.29;
+  letter-spacing: -0.224px;
+  border-radius: 8px;
+  padding: 8px 15px;
+  transition: transform 0.15s ease-out;
+}
+.apple-button-dark-utility:active {
+  transform: scale(0.95);
+}
+
+.apple-search-input {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+  border-radius: 9999px;
+  padding: 12px 20px;
+  height: 44px;
+  border: 1px solid rgba(0,0,0,0.08);
+}
+.apple-search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+/* Custom Markdown Styles */
+.prose-markdown {
+  font-size: 17px;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+  color: inherit;
+}
+
+.prose-markdown p:not(:last-child) {
+  margin-bottom: 0.75rem;
+}
+
+.prose-markdown ul {
+  list-style-type: disc;
+  margin-left: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose-markdown ol {
+  list-style-type: decimal;
+  margin-left: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose-markdown li {
+  margin-bottom: 0.25rem;
+}
+
+.prose-markdown strong {
+  font-weight: 600;
+  color: inherit;
+}
+
+.prose-markdown code {
+  font-family: monospace;
+  font-size: 14px;
+  background-color: var(--color-canvas-parchment);
+  padding: 0.15rem 0.35rem;
+  border-radius: 5px;
+  color: var(--color-primary);
+}
+
+.prose-markdown pre {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--color-canvas-parchment);
+  border: 1px solid var(--color-hairline);
+  border-radius: 11px;
+  overflow-x: auto;
+}
+
+.prose-markdown pre code {
+  background-color: transparent;
+  padding: 0;
+  color: var(--color-ink);
+}
+
+.prose-markdown a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.prose-markdown h1,
+.prose-markdown h2,
+.prose-markdown h3,
+.prose-markdown h4 {
+  font-weight: 600;
+  color: inherit;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose-markdown blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: 0.75rem;
+  margin-left: 0;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-ink-muted-80);
+  font-style: italic;
+}
+

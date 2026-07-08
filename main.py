@@ -1,0 +1,256 @@
+import os
+import shutil
+from typing import List, Dict, Optional
+from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
+from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+import json
+
+import embedder
+from embedder import embed_and_store
+from rag_pipeline import answer_query, answer_query_stream
+from llm_router import get_available_models, DEFAULT_MODEL
+
+# Initialize FastAPI App
+app = FastAPI(
+    title="RAG Chatbot Backend API",
+    description="FastAPI backend supporting dynamic PDF ingestion, vector search, reranking, and Groq LLM generation.",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.210.217:3000"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Ensure uploads directory exists
+UPLOAD_DIR = "./uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+# =========================
+# PYDANTIC SCHEMAS (DATA VALIDATION)
+# =========================
+
+class ChatMessage(BaseModel):
+    role: str # "user" or "assistant"
+    content: str
+
+class ChatRequest(BaseModel):
+    query: str
+    chat_history: List[Dict[str, str]] = []
+    model_id: Optional[str] = None
+    user_api_key: Optional[str] = None
+
+class UploadRequest(BaseModel):
+    file_url: str
+    filename: str
+
+
+# =========================
+# API ENDPOINTS
+# =========================
+
+@app.get("/")
+def read_root():
+    return {
+        "message": "Welcome to the RAG Chatbot Backend API!",
+        "docs_url": "/docs",
+        "status": "online"
+    }
+
+
+@app.get("/api/models")
+async def list_models():
+    """Return available LLM models and host key availability."""
+    return {"models": get_available_models(), "default": DEFAULT_MODEL}
+
+
+@app.post("/api/upload")
+async def upload_pdf(request: UploadRequest, background_tasks: BackgroundTasks, x_user_id: str = Header(None)):
+    """
+    Endpoint to process a PDF uploaded to Firebase Storage.
+    Downloads the file temporarily, embeds the chunks, stores them in ChromaDB, and deletes the temp file.
+    """
+    if not request.filename.lower().endswith('.pdf'):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file format. Only PDF files are supported."
+        )
+
+    user_id_safe = x_user_id if x_user_id else "anonymous"
+    user_dir = os.path.join(UPLOAD_DIR, user_id_safe)
+    os.makedirs(user_dir, exist_ok=True)
+    
+    filepath = os.path.join(user_dir, request.filename)
+    # Normalize the path to use consistent separators
+    filepath = os.path.normpath(filepath)
+    
+    try:
+        import urllib.request
+        # Download the uploaded file from Firebase Storage to local disk
+        print(f"[UPLOAD] Downloading from Firebase Storage...")
+        urllib.request.urlretrieve(request.file_url, filepath)
+        
+        print(f"[UPLOAD] Saved temporary file: {filepath}")
+        print(f"[UPLOAD] File size: {os.path.getsize(filepath)} bytes")
+
+        # Run the embedding and storage pipeline in background
+        print(f"[UPLOAD] Scheduling embed_and_store for: {filepath} (user: {user_id_safe})")
+        background_tasks.add_task(embed_and_store, filepath, user_id=user_id_safe)
+
+        # Do not delete the file here; embed_and_store will clean up after processing
+
+        return {
+            "status": "success",
+            "filename": request.filename
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"[UPLOAD ERROR] Error during upload/embedding: {e}")
+        traceback.print_exc()
+        # Clean up on error
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        raise HTTPException(status_code=500, detail=f"Failed to process and index PDF: {e}")
+
+
+@app.post("/api/chat")
+async def chat_endpoint(request: ChatRequest, x_user_id: str = Header(None)):
+    """
+    Endpoint to submit a query and get a retrieved-context response.
+    Accommodates chat history for conversational memory.
+    """
+    if not request.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty.")
+        
+    try:
+        formatted_history = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in request.chat_history
+        ]
+
+        user_id_safe = x_user_id if x_user_id else "anonymous"
+        model_id = request.model_id or DEFAULT_MODEL
+        result = answer_query(
+            query=request.query,
+            chat_history=formatted_history,
+            user_id=user_id_safe,
+            model_id=model_id,
+            user_api_key=request.user_api_key,
+        )
+        
+        # Format sources for response (remove heavy tensors or raw list formatting)
+        sources = []
+        for src in result["sources"]:
+            sources.append({
+                "id": src.get("id"),
+                "text": src.get("text"),
+                "source": src.get("metadata", {}).get("source", "Unknown"),
+                "score": src.get("rerank_score", 0.0)
+            })
+            
+        return {
+            "answer": result["answer"],
+            "sources": sources
+        }
+        
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Error executing query: {e}")
+
+
+
+@app.post("/api/chat/stream")
+async def chat_stream_endpoint(request: ChatRequest, x_user_id: str = Header(None)):
+    """
+    SSE endpoint to query and get a streamed response from the RAG pipeline.
+    Yields sources followed by token chunks.
+    """
+    if not request.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty.")
+        
+    try:
+        formatted_history = [
+            {"role": msg.role, "content": msg.content} 
+            for msg in request.chat_history
+        ]
+        
+        user_id_safe = x_user_id if x_user_id else "anonymous"
+        model_id = request.model_id or DEFAULT_MODEL
+        
+        def event_generator():
+            for event in answer_query_stream(
+                query=request.query, 
+                chat_history=formatted_history, 
+                user_id=user_id_safe,
+                model_id=model_id,
+                user_api_key=request.user_api_key
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+                
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+        
+    except Exception as e:
+        print(f"Error in chat stream endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Error executing streaming query: {e}")
+
+
+@app.get("/api/status")
+async def get_status(x_user_id: str = Header(None)):
+    """Returns database size and indexed document metadata details."""
+    try:
+        user_id_safe = x_user_id if x_user_id else "anonymous"
+        try:
+            results = embedder.collection.get(where={"user_id": user_id_safe})
+            collection_count = len(results.get("ids", []))
+            metadatas = results.get("metadatas", [])
+        except Exception:
+            collection_count = 0
+            metadatas = []
+        
+        unique_sources = list(set([m.get("source", "Unknown") for m in metadatas if m]))
+        
+        return {
+            "ready": collection_count > 0,
+            "chunk_count": collection_count,
+            "indexed_documents": [os.path.basename(s) for s in unique_sources]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch database status: {e}")
+
+
+@app.post("/api/reset")
+async def reset_db(x_user_id: str = Header(None)):
+    """Clears indexed chunks and documents for the current user from ChromaDB."""
+    try:
+        user_id_safe = x_user_id if x_user_id else "anonymous"
+        
+        # Delete user's collection chunks
+        try:
+            embedder.collection.delete(where={"user_id": user_id_safe})
+        except Exception:
+            pass # ignore if doesn't exist
+            
+        # Clear user's uploads folder
+        user_dir = os.path.join(UPLOAD_DIR, user_id_safe)
+        if os.path.exists(user_dir):
+            shutil.rmtree(user_dir)
+            
+        return {
+            "status": "success",
+            "message": "User's data has been successfully reset."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reset ChromaDB: {e}")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    # Start the server on port 8000
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
