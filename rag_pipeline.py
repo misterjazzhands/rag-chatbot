@@ -24,12 +24,14 @@ print("Loading local embedding model (all-MiniLM-L6-v2)...")
 embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # 3. Load Reranker Model (Cross-Encoder)
-print("Loading local reranker model (cross-encoder/ms-marco-MiniLM-L-6-v2)...")
-try:
-    reranker_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-except Exception as e:
-    print(f"Error loading CrossEncoder. Falling back to default retrieval. Details: {e}")
-    reranker_model = None
+# print("Loading local reranker model (cross-encoder/ms-marco-MiniLM-L-6-v2)...")
+# try:
+#     reranker_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+# except Exception as e:
+#     print(f"Error loading CrossEncoder. Falling back to default retrieval. Details: {e}")
+#     reranker_model = None
+reranker_model = None
+print("Reranker disabled to reduce memory usage.")
 
 # 4. Connect to ChromaDB
 print("Connecting to ChromaDB...")
