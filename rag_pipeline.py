@@ -19,9 +19,9 @@ load_dotenv()
 
 print("\n--- Initializing RAG Pipeline ---")
 
-# 2. Load Embedding Model (all-MiniLM-L6-v2)
-print("Loading local embedding model (all-MiniLM-L6-v2)...")
-embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+# 2. Re-use the existing Embedding Model from embedder to save RAM memory
+print("Importing shared embedding model instance...")
+from embedder import embed_model
 
 # 3. Load Reranker Model (Cross-Encoder)
 # print("Loading local reranker model (cross-encoder/ms-marco-MiniLM-L-6-v2)...")
