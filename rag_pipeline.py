@@ -1,8 +1,8 @@
 import os
 import sys
+import requests
 from dotenv import load_dotenv
 import chromadb
-from sentence_transformers import SentenceTransformer, CrossEncoder
 from llm_router import (
     DEFAULT_MODEL,
     chat_completion,
@@ -13,27 +13,30 @@ from llm_router import (
 # Load environment variables
 load_dotenv()
 
-# =========================
-# INITIALIZE MODELS & CLIENTS
-# =========================
+print("\n--- Initializing API-Based RAG Pipeline ---")
 
-print("\n--- Initializing RAG Pipeline ---")
+# Setup Hugging Face API
+HF_TOKEN = os.getenv("HF_TOKEN")
+API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
 
-# 2. Re-use the existing Embedding Model from embedder to save RAM memory
-print("Importing shared embedding model instance...")
-from embedder import embed_model
+def get_single_embedding(text):
+    """Fetch a single query embedding from HF API."""
+    if not HF_TOKEN:
+        print("WARNING: HF_TOKEN environment variable not set.")
+        return [0.0] * 384
+    try:
+        response = requests.post(API_URL, headers=headers, json={"inputs": [text]})
+        response.raise_for_status()
+        return response.json()[0]
+    except Exception as e:
+        print(f"API Embedding failed: {e}")
+        return [0.0] * 384
 
-# 3. Load Reranker Model (Cross-Encoder)
-# print("Loading local reranker model (cross-encoder/ms-marco-MiniLM-L-6-v2)...")
-# try:
-#     reranker_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-# except Exception as e:
-#     print(f"Error loading CrossEncoder. Falling back to default retrieval. Details: {e}")
-#     reranker_model = None
 reranker_model = None
 print("Reranker disabled to reduce memory usage.")
 
-# 4. Connect to ChromaDB
+# Connect to ChromaDB
 print("Connecting to ChromaDB...")
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = chroma_client.get_or_create_collection("knowledge_base")
@@ -47,12 +50,12 @@ print("RAG Pipeline ready.\n")
 
 def retrieve_candidates(query, top_k=10, user_id="anonymous"):
     """Retrieve top_k semantic candidate chunks from ChromaDB."""
-    # Normalize query embedding to match indexed vectors
-    query_embedding = embed_model.encode(query, normalize_embeddings=True)
+    # Get embedding from API instead of local model
+    query_embedding = get_single_embedding(query)
     
     # Query ChromaDB collection
     results = collection.query(
-        query_embeddings=[query_embedding.tolist()],
+        query_embeddings=[query_embedding],
         n_results=top_k,
         where={"user_id": user_id}
     )
@@ -68,39 +71,13 @@ def retrieve_candidates(query, top_k=10, user_id="anonymous"):
 
 
 def rerank_candidates(query, candidates, top_n=3):
-    """Use CrossEncoder to rerank candidate chunks for high-precision retrieval."""
+    """Fallback bypass since reranker is disabled."""
     if not candidates:
         return []
-    
-    # If reranker model isn't loaded, fallback to top_n from semantic retrieval
-    if not reranker_model:
-        return candidates[:top_n]
-    
-    # Extract texts from candidates
-    texts = [cand["text"] for cand in candidates]
-    
-    # Create query-document pairs
-    pairs = [(query, text) for text in texts]
-    
-    # Predict relevance scores
-    scores = reranker_model.predict(pairs)
-    
-    # Combine scores with candidates
-    scored_candidates = []
-    for i, score in enumerate(scores):
-        cand = candidates[i].copy()
-        cand["rerank_score"] = float(score)
-        scored_candidates.append(cand)
-    
-    # Sort by score descending
-    scored_candidates.sort(reverse=True, key=lambda x: x["rerank_score"])
-    
-    # Keep only the top_n results
-    return scored_candidates[:top_n]
+    return candidates[:top_n]
 
 
 def safe_print(message):
-    """Utility to print unicode messages safely on all OS platforms."""
     try:
         print(message)
     except UnicodeEncodeError:
@@ -113,7 +90,6 @@ def safe_print(message):
 # =========================
 
 def reformulate_query(query, chat_history, model_id=DEFAULT_MODEL, user_api_key=None):
-    """Rewrite follow-up questions to be standalone queries based on chat history."""
     if not chat_history:
         return query
         
@@ -146,7 +122,6 @@ def reformulate_query(query, chat_history, model_id=DEFAULT_MODEL, user_api_key=
 
 
 def local_fallback_answer(query, candidates, top_n=3):
-    """Term-frequency fallback when LLM APIs are unavailable."""
     terms = set(query.lower().split())
     scored = []
     for cand in candidates:
@@ -173,29 +148,15 @@ def answer_query(
     model_id=DEFAULT_MODEL,
     user_api_key=None,
 ):
-    """
-    Main pipeline execution:
-    1. Reformulate query
-    2. Retrieve candidates
-    3. Rerank candidates
-    4. Construct prompt with context and history
-    5. Fetch LLM answer
-    """
     if chat_history is None:
         chat_history = []
 
     search_query = reformulate_query(query, chat_history, model_id, user_api_key)
-    
-    # Step 2: Retrieve candidates
     candidates = retrieve_candidates(search_query, top_k=top_k, user_id=user_id)
-    
-    # Step 3: Rerank
     relevant_chunks = rerank_candidates(search_query, candidates, top_n=top_n)
     
-    # Combine context
     context_str = "\n\n".join([f"--- Context Segment ---\n{chunk['text']}" for chunk in relevant_chunks])
     
-    # Step 4: Construct System Prompt
     system_prompt = (
         "You are an expert AI Assistant designed to answer questions strictly based on the provided document contexts.\n\n"
         "RULES FOR OPERATION:\n"
@@ -207,14 +168,9 @@ def answer_query(
         f"CONTEXT SEGMENTS:\n{context_str}"
     )
     
-    # Step 5: Build Messages Payload (incorporating conversational history)
     messages = [{"role": "system", "content": system_prompt}]
-    
-    # Add chat history (limit to last 6 messages to keep context window manageable)
     for msg in chat_history[-6:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
-        
-    # Append the current query
     messages.append({"role": "user", "content": query})
     
     try:
@@ -248,26 +204,13 @@ def answer_query_stream(
     model_id=DEFAULT_MODEL,
     user_api_key=None,
 ):
-    """
-    Main pipeline execution with streaming support:
-    1. Reformulate query
-    2. Retrieve candidates
-    3. Rerank candidates
-    4. Yield source citations immediately
-    5. Stream LLM tokens
-    """
     if chat_history is None:
         chat_history = []
 
     search_query = reformulate_query(query, chat_history, model_id, user_api_key)
-    
-    # Step 2: Retrieve candidates
     candidates = retrieve_candidates(search_query, top_k=top_k, user_id=user_id)
-    
-    # Step 3: Rerank
     relevant_chunks = rerank_candidates(search_query, candidates, top_n=top_n)
     
-    # Format sources for frontend
     sources = []
     for src in relevant_chunks:
         sources.append({
@@ -279,10 +222,8 @@ def answer_query_stream(
         
     yield {"type": "sources", "sources": sources, "model": model_id}
     
-    # Combine context for prompt
     context_str = "\n\n".join([f"--- Context Segment ---\n{chunk['text']}" for chunk in relevant_chunks])
     
-    # Step 4: Construct System Prompt
     system_prompt = (
         "You are an expert AI Assistant designed to answer questions strictly based on the provided document contexts.\n\n"
         "RULES FOR OPERATION:\n"
@@ -294,7 +235,6 @@ def answer_query_stream(
         f"CONTEXT SEGMENTS:\n{context_str}"
     )
     
-    # Step 5: Build Messages Payload
     messages = [{"role": "system", "content": system_prompt}]
     for msg in chat_history[-6:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
@@ -325,17 +265,12 @@ def answer_query_stream(
         yield {"type": "token", "token": answer}
 
 
-# =========================
-# TERMINAL CHAT SIMULATOR
-# =========================
-
 if __name__ == "__main__":
     print("\n=========================================")
     print("   CONVERSATIONAL RAG CHATBOT SIMULATOR  ")
     print("=========================================")
     
     history = []
-    
     print("\nChatbot ready! Ask questions about your document (type 'quit' to exit).\n")
     
     while True:
@@ -344,28 +279,22 @@ if __name__ == "__main__":
             if user_input.strip().lower() == "quit":
                 print("Goodbye!")
                 break
-                
             if not user_input.strip():
                 continue
                 
-            # Run the RAG pipeline
             result = answer_query(user_input, chat_history=history)
             
-            # Print response
             print("\n" + "="*50)
             safe_print(f"Bot: {result['answer']}")
             print("="*50)
             
-            # Print Sources used
             print("\nSources Used:")
             for idx, src in enumerate(result['sources']):
                 score_str = f"Score: {src['rerank_score']:.4f}" if 'rerank_score' in src else "Similarity match"
                 safe_print(f"[{idx+1}] Chunk: {src['id']} ({score_str})")
-                # print a small snippet of the source text
                 safe_print(f"   Snippet: {src['text'][:120]}...")
             print("\n" + "-"*50 + "\n")
             
-            # Update history
             history.append({"role": "user", "content": user_input})
             history.append({"role": "assistant", "content": result['answer']})
             

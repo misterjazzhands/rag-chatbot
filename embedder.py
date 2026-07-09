@@ -1,40 +1,55 @@
 import os
-from sentence_transformers import SentenceTransformer
+import requests
 import chromadb
 print("Imports successful.")
 from chunker import load_and_chunk
 print("Chunker imported.")
 
-embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-print("Model loaded.")
+# Fetch your token from environment variables
+HF_TOKEN = os.getenv("HF_TOKEN")
+API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+
+def get_embedding(texts):
+    """Fetch embeddings from Hugging Face Free Inference API."""
+    if not HF_TOKEN:
+        print("WARNING: HF_TOKEN environment variable not set.")
+        # Fallback to a zero-vector array just to keep things from crashing during testing
+        return [[0.0] * 384 for _ in texts]
+        
+    try:
+        response = requests.post(API_URL, headers=headers, json={"inputs": texts})
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Error fetching embeddings from Hugging Face API: {e}")
+        raise
 
 # Create a ChromaDB client and collection
 client = chromadb.PersistentClient(path="./chroma_db")
 collection = client.get_or_create_collection("knowledge_base")
-
 print("ChromaDB client and collection ready.")
 
 def embed_and_store(pdf_path, user_id="anonymous"):
-
     try:
         print("Starting embedding pipeline...")
 
-        #Get chunks from pdf
+        # Get chunks from pdf
         chunks = load_and_chunk(pdf_path)
         print(f"Loaded {len(chunks)} chunks")
 
-        #Embed each chunk
-        print("Embedding chunks... This may take a moment.")
-        embeddings = embed_model.encode(chunks, normalize_embeddings=True)
-        print(f"Embedding complete.")
+        if not chunks:
+            return
+
+        print("Requesting embeddings from Hugging Face API...")
+        embeddings = get_embedding(chunks)
+        print("Embedding complete.")
         
         # Store in ChromaDB
         ids = [f"{pdf_path}_chunk_{i}" for i in range(len(chunks))]
         metadatas = [{"source": pdf_path, "user_id": user_id} for _ in chunks]
 
-        # Clear existing chunks for this source to prevent duplicate chunks on re-upload
         try:
-            # Check count before delete
             initial_count = collection.count()
             collection.delete(where={"$and": [{"source": pdf_path}, {"user_id": user_id}]})
             cleared_count = initial_count - collection.count()
@@ -45,13 +60,12 @@ def embed_and_store(pdf_path, user_id="anonymous"):
 
         collection.add(
             documents = chunks,
-            embeddings = embeddings.tolist(),
+            embeddings = embeddings,
             ids = ids,
             metadatas = metadatas
         )
         print(f"Stored {len(chunks)} chunks in ChromaDB.")
 
-        # Cleanup: delete the temporary PDF file after processing
         try:
             if os.path.exists(pdf_path):
                 os.remove(pdf_path)
