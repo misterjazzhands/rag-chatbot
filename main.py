@@ -7,10 +7,14 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import json
 
-import embedder
-from embedder import embed_and_store
-from rag_pipeline import answer_query, answer_query_stream
+# Safer import structure to prevent compilation pipeline blocks
 from llm_router import get_available_models, DEFAULT_MODEL
+import embedder
+from rag_pipeline import answer_query, answer_query_stream
+
+# Helper function wrapper to resolve lazy background evaluation
+def embed_and_store(pdf_path, user_id="anonymous"):
+    return embedder.embed_and_store(pdf_path, user_id)
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -252,5 +256,6 @@ async def reset_db(x_user_id: str = Header(None)):
 
 if __name__ == "__main__":
     import uvicorn
-    # Start the server on port 8000
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Disable reload on production servers
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
