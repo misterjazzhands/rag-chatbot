@@ -203,23 +203,24 @@ async def chat_stream_endpoint(request: ChatRequest, x_user_id: str = Header(Non
 
 @app.get("/api/status")
 async def get_status(x_user_id: str = Header(None)):
-    """Returns database size and indexed document metadata details."""
+    """Returns dynamic vector data validation status."""
     try:
         user_id_safe = x_user_id if x_user_id else "anonymous"
-        try:
-            results = embedder.collection.get(where={"user_id": user_id_safe})
-            collection_count = len(results.get("ids", []))
-            metadatas = results.get("metadatas", [])
-        except Exception:
-            collection_count = 0
-            metadatas = []
-        
-        unique_sources = list(set([m.get("source", "Unknown") for m in metadatas if m]))
+        # Secure query against Pinecone index
+        res = embedder.index.query(
+            vector=[0.0]*384, 
+            top_k=10, 
+            include_metadata=True, 
+            filter={"user_id": {"$eq": user_id_safe}}
+        )
+        matches = res.get("matches", [])
+        chunk_count = len(matches)
+        unique_sources = list(set([m["metadata"]["source"] for m in matches if "metadata" in m]))
         
         return {
-            "ready": collection_count > 0,
-            "chunk_count": collection_count,
-            "indexed_documents": [os.path.basename(s) for s in unique_sources]
+            "ready": chunk_count > 0,
+            "chunk_count": chunk_count,
+            "indexed_documents": unique_sources
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch database status: {e}")

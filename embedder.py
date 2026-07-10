@@ -1,67 +1,69 @@
 import os
-from sentence_transformers import SentenceTransformer
-import chromadb
+import requests
+from pinecone import Pinecone
 print("Imports successful.")
 from chunker import load_and_chunk
 print("Chunker imported.")
 
-embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-print("Model loaded.")
+# Fetch credentials
+HF_TOKEN = os.getenv("HF_TOKEN")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 
-# Create a ChromaDB client and collection
-client = chromadb.PersistentClient(path="./chroma_db")
-collection = client.get_or_create_collection("knowledge_base")
+# Initialize Pinecone Client
+pc = Pinecone(api_key=PINECONE_API_KEY)
+index = pc.Index("knowledge-base")
 
-print("ChromaDB client and collection ready.")
+API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+
+def get_embeddings(texts):
+    """Fetch embeddings from Hugging Face Free Inference API."""
+    try:
+        response = requests.post(API_URL, headers=headers, json={"inputs": texts})
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Error fetching embeddings from Hugging Face API: {e}")
+        raise
 
 def embed_and_store(pdf_path, user_id="anonymous"):
-
     try:
-        print("Starting embedding pipeline...")
-
-        #Get chunks from pdf
+        print("Starting Pinecone embedding pipeline...")
         chunks = load_and_chunk(pdf_path)
         print(f"Loaded {len(chunks)} chunks")
 
-        #Embed each chunk
-        print("Embedding chunks... This may take a moment.")
-        embeddings = embed_model.encode(chunks, normalize_embeddings=True)
-        print(f"Embedding complete.")
+        if not chunks:
+            return
+
+        print("Requesting embeddings from Hugging Face API...")
+        embeddings = get_embeddings(chunks)
+        print("Embedding complete.")
         
-        # Store in ChromaDB
-        ids = [f"{pdf_path}_chunk_{i}" for i in range(len(chunks))]
-        metadatas = [{"source": pdf_path, "user_id": user_id} for _ in chunks]
+        # Format payloads for Pinecone upsertion
+        upsert_data = []
+        for i, chunk in enumerate(chunks):
+            # Clean non-ascii strings safely for metadata fields
+            safe_id = f"{os.path.basename(pdf_path)}_chunk_{i}".replace(" ", "_")
+            upsert_data.append({
+                "id": safe_id,
+                "values": embeddings[i],
+                "metadata": {
+                    "text": chunk,
+                    "source": os.path.basename(pdf_path),
+                    "user_id": user_id
+                }
+            })
 
-        # Clear existing chunks for this source to prevent duplicate chunks on re-upload
-        try:
-            # Check count before delete
-            initial_count = collection.count()
-            collection.delete(where={"$and": [{"source": pdf_path}, {"user_id": user_id}]})
-            cleared_count = initial_count - collection.count()
-            if cleared_count > 0:
-                print(f"Cleared {cleared_count} existing chunks for source '{pdf_path}'.")
-        except Exception as e:
-            print(f"No existing chunks to clear or delete error: {e}")
+        # Upsert vectors directly into cloud instance
+        print("Upserting vectors into cloud Pinecone instance...")
+        index.upsert(vectors=upsert_data)
+        print("Stored safely in Pinecone.")
 
-        collection.add(
-            documents = chunks,
-            embeddings = embeddings.tolist(),
-            ids = ids,
-            metadatas = metadatas
-        )
-        print(f"Stored {len(chunks)} chunks in ChromaDB.")
-
-        # Cleanup: delete the temporary PDF file after processing
-        try:
-            if os.path.exists(pdf_path):
-                os.remove(pdf_path)
-                print(f"[CLEANUP] Deleted temporary PDF file: {pdf_path}")
-        except Exception as cleanup_err:
-            print(f"[CLEANUP ERROR] Failed to delete temporary PDF {pdf_path}: {cleanup_err}")
+        # Local Cleanup
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
+            print(f"[CLEANUP] Deleted temporary file: {pdf_path}")
 
     except Exception as e:
-        print(f"Error in embedding pipeline: {e}")
+        print(f"Error in Pinecone embedding pipeline: {e}")
         raise
-
-if __name__ == "__main__":
-    embed_and_store("test.pdf")

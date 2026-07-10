@@ -3,7 +3,7 @@ uvicorn[standard]>=0.28.0
 pydantic>=2.0
 groq>=0.5.0
 litellm>=1.40.0
-chromadb>=0.4.24
+pinecone
 sentence-transformers>=2.5.0
 nltk>=3.8.1
 pypdf>=4.1.0
