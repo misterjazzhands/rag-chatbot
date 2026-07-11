@@ -59,27 +59,27 @@ export default function RAGChatbot() {
     indexed_documents: [],
   });
   const [error, setError] = useState<string | null>(null);
-  
+
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
-  
+
   // Toast notifications state
   const [toasts, setToasts] = useState<Toast[]>([]);
-  
+
   // Custom confirmation modal state
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState>({
     isOpen: false,
     title: "",
     message: "",
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  
+
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
 
   const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
@@ -207,19 +207,17 @@ export default function RAGChatbot() {
     setError(null);
 
     try {
-      // 1. Upload to Firebase Storage
-      const fileRef = ref(storage, `uploads/${user.uid}/${file.name}`);
-      await uploadBytes(fileRef, file);
-      const downloadUrl = await getDownloadURL(fileRef);
+      // Direct upload to backend - no Firebase Storage needed
+      const formData = new FormData();
+      formData.append("file", file);
 
-      // 2. Send URL to Backend
       const res = await fetch(`${BACKEND_URL}/api/upload`, {
         method: "POST",
-        headers: { 
-          "X-User-ID": user.uid,
-          "Content-Type": "application/json"
+        headers: {
+          "x-user-id": user.uid,
+          // DO NOT set Content-Type - browser sets it automatically with boundary
         },
-        body: JSON.stringify({ file_url: downloadUrl, filename: file.name }),
+        body: formData,
       });
 
       if (!res.ok) {
@@ -247,7 +245,7 @@ export default function RAGChatbot() {
       onConfirm: async () => {
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         try {
-          const res = await fetch(`${BACKEND_URL}/api/reset`, { 
+          const res = await fetch(`${BACKEND_URL}/api/reset`, {
             method: "POST",
             headers: { "X-User-ID": user?.uid || "" }
           });
@@ -296,9 +294,9 @@ export default function RAGChatbot() {
     try {
       const res = await fetch(`${BACKEND_URL}/api/chat/stream`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          "X-User-ID": user?.uid || "" 
+          "X-User-ID": user?.uid || ""
         },
         body: JSON.stringify({
           query: userMessage.content,
@@ -366,7 +364,7 @@ export default function RAGChatbot() {
           }
         }
       }
-      
+
       // Stream finished successfully, sync the final state to Firestore
       setMessages((prev) => {
         syncChatHistory(prev);
@@ -392,7 +390,7 @@ export default function RAGChatbot() {
 
   return (
     <div className="flex flex-col h-screen bg-[var(--color-canvas)] text-[var(--color-ink)]">
-      
+
       {/* 🚀 Apple Global Nav */}
       <header className="h-[44px] bg-[var(--color-surface-black)] text-[var(--color-on-dark)] px-6 flex justify-between items-center shrink-0 w-full z-10">
         <div className="flex items-center gap-4">
@@ -404,7 +402,7 @@ export default function RAGChatbot() {
           </div>
         </div>
         <div className="flex items-center gap-4 relative">
-          <button 
+          <button
             onClick={() => setIsProfileOpen(!isProfileOpen)}
             className="w-[32px] h-[32px] rounded-full bg-[var(--color-surface-pearl)] border border-[var(--color-hairline)] flex items-center justify-center text-[var(--color-ink)] hover:bg-[var(--color-canvas-parchment)] transition-colors cursor-pointer overflow-hidden"
           >
@@ -416,7 +414,7 @@ export default function RAGChatbot() {
               </span>
             )}
           </button>
-          
+
           {isProfileOpen && (
             <div className="absolute top-[44px] right-0 w-[240px] bg-[var(--color-canvas)] border border-[var(--color-hairline)] rounded-[11px] shadow-[rgba(0,0,0,0.1)_0px_10px_30px] p-2 z-50 flex flex-col gap-1 animate-in fade-in zoom-in-95 duration-150">
               <div className="px-3 py-2 border-b border-[var(--color-divider-soft)] mb-1">
@@ -451,7 +449,7 @@ export default function RAGChatbot() {
       </header>
 
       <main className="flex flex-1 overflow-hidden">
-        
+
         {/* Left Panel - Knowledge Ingestion (Parchment) */}
         <section className="w-80 bg-[var(--color-canvas-parchment)] border-r border-[var(--color-hairline)] p-8 flex flex-col gap-6 overflow-y-auto hidden md:flex shrink-0">
           <div>
@@ -503,7 +501,7 @@ export default function RAGChatbot() {
 
         {/* Right Panel - Chat Feed (Pure White) */}
         <section className="flex-grow flex flex-col bg-[var(--color-canvas)] overflow-hidden relative">
-          
+
           {error && (
             <div className="mx-auto mt-6 w-full max-w-2xl px-4">
               <div className="p-4 bg-[var(--color-surface-pearl)] border border-[var(--color-hairline)] rounded-[11px] caption-text flex justify-between items-center">
@@ -518,7 +516,7 @@ export default function RAGChatbot() {
               <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto gap-4 px-6">
                 <h3 className="hero-display text-[40px] tracking-tight">How can I help?</h3>
                 <p className="body-text text-[var(--color-ink-muted-80)]">
-                  {status.ready 
+                  {status.ready
                     ? "Ask questions about your uploaded documents, and I'll generate precise grounded answers."
                     : "Please upload a document to begin."}
                 </p>
@@ -527,7 +525,7 @@ export default function RAGChatbot() {
               <div className="max-w-3xl mx-auto space-y-8">
                 {messages.map((msg, index) => (
                   <div key={index} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                    
+
                     {/* Message Bubble */}
                     {msg.role === "user" ? (
                       <div className="bg-[var(--color-surface-tile-1)] text-[var(--color-on-dark)] px-5 py-3 rounded-[18px] body-text max-w-[80%] inline-block">
@@ -540,7 +538,7 @@ export default function RAGChatbot() {
                             {msg.content || "Thinking..."}
                           </ReactMarkdown>
                         </div>
-                        
+
                         {/* Sources */}
                         {msg.sources && msg.sources.length > 0 && (
                           <div className="mt-6 pt-6 border-t border-[var(--color-divider-soft)]">
@@ -560,7 +558,7 @@ export default function RAGChatbot() {
 
                   </div>
                 ))}
-                
+
                 {loading && messages.length > 0 && messages[messages.length - 1].content === "" && (
                   <div className="flex gap-2 items-center body-text text-[var(--color-ink-muted-80)] animate-pulse">
                     Generating...
@@ -613,7 +611,7 @@ export default function RAGChatbot() {
               </form>
             </div>
           </div>
-          
+
         </section>
       </main>
 

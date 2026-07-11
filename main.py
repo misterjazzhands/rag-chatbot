@@ -2,7 +2,7 @@ import os
 import shutil
 from typing import List, Dict, Optional
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, UploadFile, File
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import json
@@ -21,7 +21,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.210.217:3000"], 
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.210.217:3000", "https://rag-chatbot-six-liart.vercel.app/"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,9 +46,6 @@ class ChatRequest(BaseModel):
     model_id: Optional[str] = None
     user_api_key: Optional[str] = None
 
-class UploadRequest(BaseModel):
-    file_url: str
-    filename: str
 
 
 # =========================
@@ -71,12 +68,12 @@ async def list_models():
 
 
 @app.post("/api/upload")
-async def upload_pdf(request: UploadRequest, background_tasks: BackgroundTasks, x_user_id: str = Header(None)):
-    """
-    Endpoint to process a PDF uploaded to Firebase Storage.
-    Downloads the file temporarily, embeds the chunks, stores them in ChromaDB, and deletes the temp file.
-    """
-    if not request.filename.lower().endswith('.pdf'):
+async def upload_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    x_user_id: str = Header(None)
+):
+    if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(
             status_code=400,
             detail="Invalid file format. Only PDF files are supported."
@@ -85,39 +82,27 @@ async def upload_pdf(request: UploadRequest, background_tasks: BackgroundTasks, 
     user_id_safe = x_user_id if x_user_id else "anonymous"
     user_dir = os.path.join(UPLOAD_DIR, user_id_safe)
     os.makedirs(user_dir, exist_ok=True)
-    
-    filepath = os.path.join(user_dir, request.filename)
-    # Normalize the path to use consistent separators
-    filepath = os.path.normpath(filepath)
-    
+
+    filepath = os.path.normpath(os.path.join(user_dir, file.filename))
+
     try:
-        import urllib.request
-        # Download the uploaded file from Firebase Storage to local disk
-        print(f"[UPLOAD] Downloading from Firebase Storage...")
-        urllib.request.urlretrieve(request.file_url, filepath)
-        
-        print(f"[UPLOAD] Saved temporary file: {filepath}")
+        import shutil
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        print(f"[UPLOAD] Saved file: {filepath}")
         print(f"[UPLOAD] File size: {os.path.getsize(filepath)} bytes")
 
-        # Run the embedding and storage pipeline in background
-        print(f"[UPLOAD] Scheduling embed_and_store for: {filepath} (user: {user_id_safe})")
         background_tasks.add_task(embed_and_store, filepath, user_id=user_id_safe)
 
-        # Do not delete the file here; embed_and_store will clean up after processing
+        return {"status": "success", "filename": file.filename}
 
-        return {
-            "status": "success",
-            "filename": request.filename
-        }
-        
     except Exception as e:
         import traceback
-        print(f"[UPLOAD ERROR] Error during upload/embedding: {e}")
         traceback.print_exc()
-        # Clean up on error
         if os.path.exists(filepath):
             os.remove(filepath)
-        raise HTTPException(status_code=500, detail=f"Failed to process and index PDF: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
 
 
 @app.post("/api/chat")
