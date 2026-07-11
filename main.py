@@ -58,7 +58,7 @@ class UploadRequest(BaseModel):
 @app.get("/")
 def read_root():
     return {
-        "message": "Welcome to the RAG Chatbot Backend API!",
+        "message": "Welcome to the Pinecone RAG Chatbot API!",
         "docs_url": "/docs",
         "status": "online"
     }
