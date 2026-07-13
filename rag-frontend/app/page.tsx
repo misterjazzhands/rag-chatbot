@@ -4,10 +4,9 @@ import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useRouter } from "next/navigation";
-import { auth, db, storage } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { doc, getDoc, getDocFromCache, setDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 interface Message {
   role: "user" | "assistant";
@@ -62,7 +61,7 @@ export default function RAGChatbot() {
 
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [, setInitialLoadDone] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -181,6 +180,7 @@ export default function RAGChatbot() {
       }
     };
     loadInitialMessages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const syncChatHistory = (newMessages: Message[]) => {
@@ -407,7 +407,10 @@ export default function RAGChatbot() {
             className="w-[32px] h-[32px] rounded-full bg-[var(--color-surface-pearl)] border border-[var(--color-hairline)] flex items-center justify-center text-[var(--color-ink)] hover:bg-[var(--color-canvas-parchment)] transition-colors cursor-pointer overflow-hidden"
           >
             {user?.photoURL ? (
-              <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+              </>
             ) : (
               <span className="text-[14px] font-semibold text-[var(--color-ink)]">
                 {user?.displayName ? user.displayName.charAt(0).toUpperCase() : user?.email ? user.email.charAt(0).toUpperCase() : "U"}
