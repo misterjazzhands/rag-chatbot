@@ -1,5 +1,7 @@
 import os
+import re
 import shutil
+import traceback
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, UploadFile, File
@@ -21,7 +23,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.210.217:3000", "https://rag-chatbot-six-liart.vercel.app/"], 
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.210.217:3000", "https://rag-chatbot-six-liart.vercel.app"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -80,29 +82,34 @@ async def upload_pdf(
         )
 
     user_id_safe = x_user_id if x_user_id else "anonymous"
+    
+    # 1. Clean the filename to remove unsafe characters and spaces
+    clean_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', file.filename)
+    
+    # 2. Setup safe directories
+    UPLOAD_DIR = "./uploads"
     user_dir = os.path.join(UPLOAD_DIR, user_id_safe)
     os.makedirs(user_dir, exist_ok=True)
-
-    filepath = os.path.normpath(os.path.join(user_dir, file.filename))
-
+    filepath = os.path.normpath(os.path.join(user_dir, clean_filename))
+    
     try:
-        import shutil
+        # 3. Write file cleanly
         with open(filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-
-        print(f"[UPLOAD] Saved file: {filepath}")
-        print(f"[UPLOAD] File size: {os.path.getsize(filepath)} bytes")
-
-        background_tasks.add_task(embed_and_store, filepath, user_id=user_id_safe)
-
-        return {"status": "success", "filename": file.filename}
-
+            
+        print(f"[UPLOAD SUCCESS] Saved structured file: {filepath}")
+        
+        # 4. Offload to your background pipeline
+        background_tasks.add_task(embedder.embed_and_store, filepath, user_id=user_id_safe)
+        
+        return {"status": "success", "filename": clean_filename}
+        
     except Exception as e:
-        import traceback
+        print(f"[UPLOAD CRASH]: {str(e)}")
         traceback.print_exc()
         if os.path.exists(filepath):
             os.remove(filepath)
-        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Pipeline Error: {str(e)}")
 
 
 @app.post("/api/chat")
