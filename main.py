@@ -99,8 +99,9 @@ async def upload_pdf(
             
         print(f"[UPLOAD SUCCESS] Saved structured file: {filepath}")
         
-        # 4. Offload to your background pipeline
-        background_tasks.add_task(embedder.embed_and_store, filepath, user_id=user_id_safe)
+        # 4. Offload to your background pipeline but wait for it to finish!
+        import asyncio
+        await asyncio.to_thread(embedder.embed_and_store, filepath, user_id_safe)
         
         return {"status": "success", "filename": clean_filename}
         
@@ -200,7 +201,7 @@ async def get_status(x_user_id: str = Header(None)):
         user_id_safe = x_user_id if x_user_id else "anonymous"
         # Secure query against Pinecone index
         res = embedder.index.query(
-            vector=[0.0]*384, 
+            vector=[0.01]*384, 
             top_k=10, 
             include_metadata=True, 
             filter={"user_id": {"$eq": user_id_safe}}
