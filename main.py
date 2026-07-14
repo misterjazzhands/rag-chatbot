@@ -224,10 +224,11 @@ async def reset_db(x_user_id: str = Header(None)):
     try:
         user_id_safe = x_user_id if x_user_id else "anonymous"
         
-        # Delete user's collection chunks
+        # Delete user's vectors from Pinecone
         try:
-            embedder.collection.delete(where={"user_id": user_id_safe})
-        except Exception:
+            embedder.index.delete(filter={"user_id": {"$eq": user_id_safe}})
+        except Exception as e:
+            print(f"Error deleting from Pinecone: {e}")
             pass # ignore if doesn't exist
             
         # Clear user's uploads folder
@@ -245,5 +246,6 @@ async def reset_db(x_user_id: str = Header(None)):
 
 if __name__ == "__main__":
     import uvicorn
-    # Start the server on port 8000
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Start the server using the PORT environment variable (vital for Railway)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
