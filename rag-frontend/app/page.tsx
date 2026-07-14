@@ -79,7 +79,8 @@ export default function RAGChatbot() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
+  const rawBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
+  const BACKEND_URL = rawBackendUrl.replace(/\/+$/, "");
 
   const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -210,7 +211,8 @@ export default function RAGChatbot() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch(`${BACKEND_URL}/api/upload`, {
+      const requestUrl = `${BACKEND_URL}/api/upload`;
+      const res = await fetch(requestUrl, {
         method: "POST",
         headers: {
           "x-user-id": user.uid,
@@ -226,7 +228,7 @@ export default function RAGChatbot() {
           const errData = JSON.parse(errText);
           errMsg = errData.detail || errMsg;
         } catch (e) {
-          errMsg = `Server error (${res.status}): ` + errText.substring(0, 100);
+          errMsg = `Server error (${res.status}) on ${requestUrl}: ` + errText.substring(0, 100);
         }
         throw new Error(errMsg);
       }
