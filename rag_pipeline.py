@@ -25,7 +25,7 @@ def get_single_embedding(text):
         return response.json()[0]
     except Exception as e:
         print(f"API Embedding failed: {e}")
-        return [0.0] * 384
+        return [0.01] * 384
 
 def retrieve_candidates(query, top_k=5, user_id="anonymous"):
     """Query Pinecone Cloud using a metadata filter for multi-tenancy isolation."""
