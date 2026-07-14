@@ -148,7 +148,7 @@ export default function RAGChatbot() {
       if (user) fetchStatus();
     }, 10000);
     return () => clearInterval(interval);
-  }, [fetchStatus, user]);
+  }, [fetchModels, fetchStatus, user]);
 
   useEffect(() => {
     const loadInitialMessages = async () => {
@@ -162,7 +162,7 @@ export default function RAGChatbot() {
         } else {
           setMessages([]);
         }
-      } catch (e: unknown) {
+      } catch {
         // Server fetch failed (maybe offline). Try cache.
         try {
           const cacheSnap = await getDocFromCache(docRef);
@@ -171,7 +171,7 @@ export default function RAGChatbot() {
           } else {
             setMessages([]);
           }
-        } catch (_) {
+        } catch {
           // No cached document; start with empty chat.
           setMessages([]);
         }
@@ -180,7 +180,6 @@ export default function RAGChatbot() {
       }
     };
     loadInitialMessages();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const syncChatHistory = (newMessages: Message[]) => {
