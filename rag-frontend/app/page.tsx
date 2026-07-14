@@ -220,8 +220,15 @@ export default function RAGChatbot() {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.detail || "Upload failed");
+        const errText = await res.text();
+        let errMsg = "Upload failed";
+        try {
+          const errData = JSON.parse(errText);
+          errMsg = errData.detail || errMsg;
+        } catch (e) {
+          errMsg = `Server error (${res.status}): ` + errText.substring(0, 100);
+        }
+        throw new Error(errMsg);
       }
 
       await fetchStatus();
