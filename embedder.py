@@ -13,13 +13,13 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 pc = Pinecone(api_key=PINECONE_API_KEY)
 index = pc.Index("knowledge-base")
 
-API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
 
 def get_embeddings(texts):
     """Fetch embeddings from Hugging Face Free Inference API."""
     try:
-        response = requests.post(API_URL, headers=headers, json={"inputs": texts})
+        response = requests.post(API_URL, headers=headers, json={"inputs": texts}, timeout=30)
         response.raise_for_status()
         return response.json()
     except Exception as e:
