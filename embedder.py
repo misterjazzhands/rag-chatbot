@@ -1,7 +1,6 @@
 import os
 import requests
 from pinecone import Pinecone
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 print("Imports successful.")
 from chunker import load_and_chunk
 print("Chunker imported.")
@@ -16,13 +15,6 @@ index = pc.Index("knowledge-base")
 
 API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
-
-# This decorator tells Python: "If a network error happens, wait a few seconds and try again, up to 4 times, before crashing."
-@retry(
-    stop=stop_after_attempt(4),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type(requests.exceptions.RequestException)
-)
 
 def get_embeddings(texts):
     """Fetch embeddings from Hugging Face Free Inference API."""
