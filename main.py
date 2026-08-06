@@ -99,9 +99,8 @@ async def upload_pdf(
             
         print(f"[UPLOAD SUCCESS] Saved structured file: {filepath}")
         
-        # 4. Offload to your background pipeline but wait for it to finish!
-        import asyncio
-        await asyncio.to_thread(embedder.embed_and_store, filepath, user_id_safe)
+        # 4. Offload to your background pipeline
+        background_tasks.add_task(embedder.embed_and_store, filepath, user_id_safe)
         
         return {"status": "success", "filename": clean_filename}
         

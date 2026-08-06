@@ -79,9 +79,11 @@ export default function RAGChatbot() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const rawBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
+  const fallbackUrl = process.env.NODE_ENV === "production" 
+    ? "https://rag-chatbot-production-bd69.up.railway.app" 
+    : "http://127.0.0.1:8000";
+  const rawBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || fallbackUrl;
   const BACKEND_URL = rawBackendUrl.replace(/\/+$/, "");
-
   const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, message, type }]);
@@ -211,7 +213,7 @@ export default function RAGChatbot() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const requestUrl = `${BACKEND_URL}/api/upload`;
+        const requestUrl = `${BACKEND_URL}/api/upload`;
       const res = await fetch(requestUrl, {
         method: "POST",
         headers: {
@@ -233,8 +235,9 @@ export default function RAGChatbot() {
         throw new Error(errMsg);
       }
 
-      await fetchStatus();
-      showToast(`Successfully uploaded and indexed: ${file.name}`, "success");
+      showToast(`Successfully uploaded: ${file.name}. Indexing in background...`, "success");
+      // Poll immediately and then rely on the 10s interval
+      setTimeout(fetchStatus, 2000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An error occurred during indexing.";
       setError(errorMessage);
