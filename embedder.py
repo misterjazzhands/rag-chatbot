@@ -16,15 +16,50 @@ index = pc.Index("knowledge-base")
 API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
 
-def get_embeddings(texts):
-    """Fetch embeddings from Hugging Face Free Inference API."""
-    try:
-        response = requests.post(API_URL, headers=headers, json={"inputs": texts}, timeout=30)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        print(f"Error fetching embeddings from Hugging Face API: {e}")
-        raise
+import time
+
+def get_embeddings(texts, retries=5):
+    """Fetch embeddings from Hugging Face Free Inference API with retries and batching."""
+    if not texts:
+        return []
+        
+    all_embeddings = []
+    batch_size = 20
+    
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        batch_embeddings = _fetch_batch_with_retry(batch, retries)
+        all_embeddings.extend(batch_embeddings)
+        
+    return all_embeddings
+
+def _fetch_batch_with_retry(batch, retries):
+    for attempt in range(retries):
+        try:
+            response = requests.post(API_URL, headers=headers, json={"inputs": batch}, timeout=30)
+            if response.status_code == 503:
+                # Model is loading
+                error_data = response.json()
+                wait_time = error_data.get("estimated_time", 10)
+                print(f"Model is loading, waiting {wait_time} seconds before retrying...")
+                time.sleep(wait_time)
+                continue
+                
+            response.raise_for_status()
+            
+            # Sometimes HF returns an error dict even with 200 OK if something is wrong
+            result = response.json()
+            if isinstance(result, dict) and "error" in result:
+                raise ValueError(f"Hugging Face API Error: {result['error']}")
+                
+            return result
+            
+        except Exception as e:
+            print(f"Attempt {attempt + 1}/{retries} failed for batch: {e}")
+            if attempt == retries - 1:
+                print("Max retries reached for Hugging Face API.")
+                raise
+            time.sleep(2)
 
 def embed_and_store(pdf_path, user_id="anonymous"):
     try:
