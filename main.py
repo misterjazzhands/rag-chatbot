@@ -201,7 +201,7 @@ async def get_status(x_user_id: str = Header(None)):
         # Secure query against Pinecone index
         res = embedder.index.query(
             vector=[0.01]*384, 
-            top_k=10, 
+            top_k=1000, 
             include_metadata=True, 
             filter={"user_id": {"$eq": user_id_safe}}
         )

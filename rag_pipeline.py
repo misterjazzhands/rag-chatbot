@@ -13,7 +13,8 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 
 # Initialize Cloud clients
 pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc.Index("knowledge-base")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "knowledge-base")
+index = pc.Index(PINECONE_INDEX_NAME)
 
 API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
