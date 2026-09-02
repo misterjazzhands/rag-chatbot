@@ -79,8 +79,8 @@ export default function RAGChatbot() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const fallbackUrl = process.env.NODE_ENV === "production" 
-    ? "https://rag-chatbot-production-bd69.up.railway.app" 
+  const fallbackUrl = process.env.NODE_ENV === "production"
+    ? "https://rag-chatbot-backend-mziq.onrender.com"
     : "http://127.0.0.1:8000";
   const rawBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || fallbackUrl;
   const BACKEND_URL = rawBackendUrl.replace(/\/+$/, "");
@@ -213,7 +213,7 @@ export default function RAGChatbot() {
       const formData = new FormData();
       formData.append("file", file);
 
-        const requestUrl = `${BACKEND_URL}/api/upload`;
+      const requestUrl = `${BACKEND_URL}/api/upload`;
       const res = await fetch(requestUrl, {
         method: "POST",
         headers: {

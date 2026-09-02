@@ -95,11 +95,11 @@ def embed_and_store(pdf_path, user_id="anonymous"):
         index.upsert(vectors=upsert_data)
         print("Stored safely in Pinecone.")
 
+    except Exception as e:
+        print(f"Error in Pinecone embedding pipeline: {e}")
+        raise
+    finally:
         # Local Cleanup
         if os.path.exists(pdf_path):
             os.remove(pdf_path)
             print(f"[CLEANUP] Deleted temporary file: {pdf_path}")
-
-    except Exception as e:
-        print(f"Error in Pinecone embedding pipeline: {e}")
-        raise
