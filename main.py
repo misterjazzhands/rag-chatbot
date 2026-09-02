@@ -70,8 +70,7 @@ async def list_models():
 
 
 @app.post("/api/upload")
-async def upload_pdf(
-    background_tasks: BackgroundTasks,
+def upload_pdf(
     file: UploadFile = File(...),
     x_user_id: str = Header(None)
 ):
@@ -99,8 +98,8 @@ async def upload_pdf(
             
         print(f"[UPLOAD SUCCESS] Saved structured file: {filepath}")
         
-        # 4. Offload to your background pipeline
-        background_tasks.add_task(embedder.embed_and_store, filepath, user_id_safe)
+        # 4. Process synchronously so we can return errors to the user
+        embedder.embed_and_store(filepath, user_id_safe)
         
         return {"status": "success", "filename": clean_filename}
         

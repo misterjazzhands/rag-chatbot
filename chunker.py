@@ -11,6 +11,11 @@ import nltk
 
 # Programmatically check and download required NLTK resources
 def download_nltk_dependencies():
+    nltk_data_dir = os.path.join(os.path.dirname(__file__), "nltk_data")
+    os.makedirs(nltk_data_dir, exist_ok=True)
+    if nltk_data_dir not in nltk.data.path:
+        nltk.data.path.append(nltk_data_dir)
+        
     required_resources = ['punkt', 'punkt_tab']
     for resource in required_resources:
         try:
@@ -20,7 +25,7 @@ def download_nltk_dependencies():
                 nltk.data.find('tokenizers/punkt_tab')
         except LookupError:
             print(f"Downloading missing NLTK resource: {resource}...")
-            nltk.download(resource, quiet=True)
+            nltk.download(resource, download_dir=nltk_data_dir, quiet=True)
 
 download_nltk_dependencies()
 from nltk.tokenize import sent_tokenize

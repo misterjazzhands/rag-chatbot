@@ -59,7 +59,7 @@ def _fetch_batch_with_retry(batch, retries):
             print(f"Attempt {attempt + 1}/{retries} failed for batch: {e}")
             if attempt == retries - 1:
                 print("Max retries reached for Hugging Face API.")
-                raise
+                raise ValueError(f"Hugging Face Free API failed after {retries} attempts. Error: {e}. If this is a NameResolutionError, check your internet connection/DNS. Otherwise, ensure HF_TOKEN is valid.")
             time.sleep(2)
 
 def embed_and_store(pdf_path, user_id="anonymous"):
