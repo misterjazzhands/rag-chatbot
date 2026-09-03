@@ -1,13 +1,14 @@
 import os
 import sys
+import requests
 from dotenv import load_dotenv
 from pinecone import Pinecone
-from sentence_transformers import SentenceTransformer
 from llm_router import DEFAULT_MODEL, chat_completion, chat_completion_stream, simple_completion
 
 load_dotenv()
 print("\n--- Initializing Cloud Pinecone RAG Pipeline ---")
 
+HF_TOKEN = os.getenv("HF_TOKEN")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 
 # Initialize Cloud clients
@@ -15,14 +16,23 @@ pc = Pinecone(api_key=PINECONE_API_KEY)
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "knowledge-base")
 index = pc.Index(PINECONE_INDEX_NAME)
 
-# Load local embedding model (shared with embedder.py via import at startup)
-print("Loading local embedding model for query encoding...")
-_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-print("Query embedding model ready.")
+HF_API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+HF_HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
 
 def get_single_embedding(text):
-    """Generate a single embedding locally using sentence-transformers."""
-    return _model.encode([text], convert_to_list=True)[0]
+    """Fetch a single embedding from HF Inference API. Falls back to zero vector on failure."""
+    try:
+        response = requests.post(
+            HF_API_URL,
+            headers=HF_HEADERS,
+            json={"inputs": [text], "options": {"wait_for_model": True}},
+            timeout=60
+        )
+        response.raise_for_status()
+        return response.json()[0]
+    except Exception as e:
+        print(f"Query embedding failed: {e}")
+        return [0.01] * 384
 
 def retrieve_candidates(query, top_k=5, user_id="anonymous"):
     """Query Pinecone Cloud using a metadata filter for multi-tenancy isolation."""

@@ -1,11 +1,13 @@
 import os
+import time
+import requests
 from pinecone import Pinecone
 print("Imports successful.")
 from chunker import load_and_chunk
 print("Chunker imported.")
-from sentence_transformers import SentenceTransformer
 
 # Fetch credentials
+HF_TOKEN = os.getenv("HF_TOKEN")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 
 # Initialize Pinecone Client
@@ -13,18 +15,60 @@ pc = Pinecone(api_key=PINECONE_API_KEY)
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "knowledge-base")
 index = pc.Index(PINECONE_INDEX_NAME)
 
-# Load the embedding model locally (downloads ~90MB on first run, then cached)
-print("Loading local embedding model (all-MiniLM-L6-v2)...")
-_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-print("Embedding model loaded.")
+# HF Inference API for sentence-transformers (no local model, no RAM overhead)
+HF_API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+HF_HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
 
 
-def get_embeddings(texts):
-    """Generate embeddings locally using the sentence-transformers model."""
+def get_embeddings(texts, retries=5):
+    """Fetch embeddings from Hugging Face Free Inference API with retries and batching."""
     if not texts:
         return []
-    embeddings = _model.encode(texts, convert_to_list=True, show_progress_bar=False)
-    return embeddings
+
+    all_embeddings = []
+    batch_size = 20
+
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        batch_embeddings = _fetch_batch_with_retry(batch, retries)
+        all_embeddings.extend(batch_embeddings)
+
+    return all_embeddings
+
+
+def _fetch_batch_with_retry(batch, retries):
+    for attempt in range(retries):
+        try:
+            response = requests.post(
+                HF_API_URL,
+                headers=HF_HEADERS,
+                json={"inputs": batch, "options": {"wait_for_model": True}},
+                timeout=60
+            )
+
+            if response.status_code == 503:
+                error_data = response.json()
+                wait_time = error_data.get("estimated_time", 20)
+                print(f"HF model loading, waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+                continue
+
+            response.raise_for_status()
+
+            result = response.json()
+            if isinstance(result, dict) and "error" in result:
+                raise ValueError(f"Hugging Face API Error: {result['error']}")
+
+            return result
+
+        except Exception as e:
+            print(f"Attempt {attempt + 1}/{retries} failed: {e}")
+            if attempt == retries - 1:
+                raise ValueError(
+                    f"Hugging Face Free API failed after {retries} attempts. "
+                    f"Error: {e}. Ensure HF_TOKEN is set and has Inference permissions."
+                )
+            time.sleep(3 * (attempt + 1))  # Exponential-ish backoff
 
 
 def embed_and_store(pdf_path, user_id="anonymous"):
@@ -34,9 +78,12 @@ def embed_and_store(pdf_path, user_id="anonymous"):
         print(f"Loaded {len(chunks)} chunks")
 
         if not chunks:
-            raise ValueError("No valid text could be extracted from this PDF. It may be an image-based scan or too short (less than 40 words).")
+            raise ValueError(
+                "No valid text could be extracted from this PDF. "
+                "It may be an image-based scan or too short (less than 40 words)."
+            )
 
-        print("Generating embeddings locally...")
+        print("Requesting embeddings from Hugging Face API...")
         embeddings = get_embeddings(chunks)
         print("Embedding complete.")
 
