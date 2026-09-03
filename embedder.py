@@ -69,7 +69,7 @@ def embed_and_store(pdf_path, user_id="anonymous"):
         print(f"Loaded {len(chunks)} chunks")
 
         if not chunks:
-            return
+            raise ValueError("No valid text could be extracted from this PDF. It may be an image-based scan or too short (less than 40 words).")
 
         print("Requesting embeddings from Hugging Face API...")
         embeddings = get_embeddings(chunks)

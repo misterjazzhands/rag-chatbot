@@ -235,7 +235,7 @@ export default function RAGChatbot() {
         throw new Error(errMsg);
       }
 
-      showToast(`Successfully uploaded: ${file.name}. Indexing in background...`, "success");
+      showToast(`Successfully uploaded and indexed: ${file.name}.`, "success");
       // Poll immediately and then rely on the 10s interval
       setTimeout(fetchStatus, 2000);
     } catch (err) {
